@@ -1,4 +1,4 @@
-using LightGraphs
+using LightGraphs, GraphLayout
 
 function makeGraph(dat::DataFrame)
   peps = levels(dat[:Peptide])
@@ -32,7 +32,7 @@ function makeGraph(dat::DataFrame)
   g,stringToVertexMap,vertexToStringMap
 end
 
-function summariseComponents(dat::DataFrame,g,stringToVertexMap,vertexToStringMap)
+function summariseComponents(dat::DataFrame,g,stringToVertexMap,vertexToStringMap,plotComponents::Bool=false)
   comps = weakly_connected_components(g)
   d = unique(dat[:,[:Protein,:Peptide]])
   peps = convert(Array,levels(d[:Peptide]))
@@ -60,6 +60,7 @@ function summariseComponents(dat::DataFrame,g,stringToVertexMap,vertexToStringMa
     componentPeps = filter((s)->(stringToVertexMap[s] in comps[compsummary[i,:ID]]), peps)
     componentVertices = [componentProts;componentPeps]
 
+
     for ind in 1:length(componentVertices)
       compgraphs[compsummary[i,:ID]][2][componentVertices[ind]] = ind
       compgraphs[compsummary[i,:ID]][3][ind] = componentVertices[ind]
@@ -75,6 +76,12 @@ function summariseComponents(dat::DataFrame,g,stringToVertexMap,vertexToStringMa
       end
     end
 
+
+    if plotComponents
+      paddingSize = Integer(ceil(log10(length(compgraphs)+1)))
+      plotGraph(compgraphs[compsummary[i,:ID]][1],componentProts,componentPeps,"component-"*lpad(compsummary[i,:ID],paddingSize,0))
+    end
+
   end
 
   #Find graphs with vertices with non-identical neighbour sets
@@ -82,7 +89,7 @@ function summariseComponents(dat::DataFrame,g,stringToVertexMap,vertexToStringMa
   for i in 1:size(compsummary)[1]
     cg = compgraphs[compsummary[i,:ID]][1]
     for v in vertices(cg)
-      if compgraphs[i][3][v] in prots
+      if compgraphs[compsummary[i,:ID]][3][v] in prots
         u = false
         for n in out_neighbors(cg,v)
           u = length(in_neighbors(cg,n)) == 1
@@ -97,7 +104,7 @@ function summariseComponents(dat::DataFrame,g,stringToVertexMap,vertexToStringMa
   nIdentifiableProteins = [0 for i in 1:size(compsummary)[1]]
   for i in 1:size(compsummary)[1]
     proteins = filter(
-                 (v)->compgraphs[i][3][v] in prots,
+                 (v)->compgraphs[compsummary[i,:ID]][3][v] in prots,
                  vertices(compgraphs[compsummary[i,:ID]][1])
                )
 
@@ -134,7 +141,7 @@ function summariseComponents(dat::DataFrame,g,stringToVertexMap,vertexToStringMa
       k+= (sum(differentSets[j,:]) == length(proteins)-1 ? 1 : 0)
     end
 
-    nIdentifiableProteins[i] = k
+    nIdentifiableProteins[compsummary[i,:ID]] = k
   end
 
   compsummary[:identifiable] = nIdentifiableProteins
@@ -162,8 +169,23 @@ function summariseComponents(dat::DataFrame,g,stringToVertexMap,vertexToStringMa
 end
 
 function GenerateLocations(nProteins,nPeptides)
+  println("nProteins: " * string(nProteins) * "   nPeptides: " * string(nPeptides))
   loc_x = [repeat([-1.0],inner=[nProteins]); repeat([1.0],inner=[nPeptides])]
-  loc_y = [collect(-1.0:(2.0/(nProteins-1)):1.0); collect(-1.0:(2.0/(nPeptides-1)):1.0)]
+  if nProteins > 1
+    proteinYs = collect(-1.0:(2.0/(nProteins-1)):1.0)
+  else
+    proteinYs = [0.5]
+  end
+
+  if nPeptides > 1
+    peptideYs = collect(-1.0:(2.0/(nPeptides-1)):1.0)
+  else
+    peptideYs = [0.5]
+  end
+
+  loc_y = [proteinYs;peptideYs]
+  println(loc_x,loc_y)
+
   return loc_x,loc_y
 end
 
