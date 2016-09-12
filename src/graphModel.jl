@@ -54,23 +54,23 @@ function summariseComponents(dat::DataFrame,g,stringToVertexMap,vertexToStringMa
                   }
                 }(length(comps))
   for i in 1:length(comps)
-    compgraphs[i] = (DiGraph(length(comps[i])),Dict{String,Int64}(),Dict{Int64,String}())
+    compgraphs[compsummary[i,:ID]] = (DiGraph(length(comps[compsummary[i,:ID]])),Dict{String,Int64}(),Dict{Int64,String}())
 
-    componentProts = filter((s)->(stringToVertexMap[s] in comps[i]), prots)
-    componentPeps = filter((s)->(stringToVertexMap[s] in comps[i]), peps)
+    componentProts = filter((s)->(stringToVertexMap[s] in comps[compsummary[i,:ID]]), prots)
+    componentPeps = filter((s)->(stringToVertexMap[s] in comps[compsummary[i,:ID]]), peps)
     componentVertices = [componentProts;componentPeps]
 
     for ind in 1:length(componentVertices)
-      compgraphs[i][2][componentVertices[ind]] = ind
-      compgraphs[i][3][ind] = componentVertices[ind]
+      compgraphs[compsummary[i,:ID]][2][componentVertices[ind]] = ind
+      compgraphs[compsummary[i,:ID]][3][ind] = componentVertices[ind]
     end
 
     for j in 1:size(d)[1]
-      if stringToVertexMap[d[j,:Peptide]] in comps[i] && stringToVertexMap[d[j,:Protein]] in comps[i]
+      if stringToVertexMap[d[j,:Peptide]] in comps[compsummary[i,:ID]] && stringToVertexMap[d[j,:Protein]] in comps[compsummary[i,:ID]]
         add_edge!(
-          compgraphs[i][1],
-          compgraphs[i][2][d[j,:Protein]],
-          compgraphs[i][2][d[j,:Peptide]]
+          compgraphs[compsummary[i,:ID]][1],
+          compgraphs[compsummary[i,:ID]][2][d[j,:Protein]],
+          compgraphs[compsummary[i,:ID]][2][d[j,:Peptide]]
         )
       end
     end
@@ -165,4 +165,13 @@ function GenerateLocations(nProteins,nPeptides)
   loc_x = [repeat([-1.0],inner=[nProteins]); repeat([1.0],inner=[nPeptides])]
   loc_y = [collect(-1.0:(2.0/(nProteins-1)):1.0); collect(-1.0:(2.0/(nPeptides-1)):1.0)]
   return loc_x,loc_y
+end
+
+function plotGraph(g::Union{LightGraphs.Graph,LightGraphs.DiGraph},proteins,peptides,outputfile)
+  loc_x,loc_y = GenerateLocations(length(proteins),length(peptides))
+  am = transpose(full(adjacency_matrix(g)))
+  try mkdir("tmp") end
+  GraphLayout.draw_layout_adj(am,loc_x,loc_y,filename="tmp/tmpgraph.svg",labels=[proteins;peptides])
+  run(`rsvg-convert -f pdf -o $outputfile tmp/tmpgraph.svg`)
+  rm("tmp/tmpgraph.svg")
 end
