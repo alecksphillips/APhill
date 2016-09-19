@@ -24,7 +24,7 @@ include("sharedModel.jl")
 
 export GenerateSimulatedData
 export unfold, calculateFDR, HPDinterval, intToHexavigesimal, combinePDFs
-export makeGraph, summariseComponents, GenerateLocations
+export makeGraph, summariseComponents, GenerateLocations, plotGraph
 export renameSimNames
 export sharedModel
 

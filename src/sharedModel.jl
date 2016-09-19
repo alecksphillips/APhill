@@ -1,4 +1,4 @@
-function sharedModel(data,compgraphs,compsummary)
+function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
   prots = levels(data[:Protein])
   #println(prots)
   verts = [compgraphs[compsummary[1,:ID]][3][v] for v in vertices(compgraphs[compsummary[1,:ID]][1])]
@@ -33,15 +33,24 @@ function sharedModel(data,compgraphs,compsummary)
   nConditions = length(conditions)
   nDigestions = length(digestions)
 
-  #=protCondMatrix = Array{UInt8,2}(N,nProteins*(nConditions-1))
+  #=proteinConditionMatrix = Array{UInt8,2}(N,nProteins*(nConditions-1))
   for j in 1:nProteins
     for c in 1:nConditions-1
       for i in 1:N
-        #print("column: $((j-1)*(nConditions-1) + c)\n")
-        protCondMatrix[i,(j-1)*(nConditions-1) + c] = (protToPep[findfirst((s)->s==dat[i,:Peptide],peptides),j] == 1 && dat[i,:Condition] == conditions[c+1] ? 1 : 0)
+        print("column: $((j-1)*(nConditions-1) + c)\n")
+        proteinConditionMatrix[i,(j-1)*(nConditions-1) + c] = (
+          dat[i,:Condition] == conditions[c+1]
+          && protToPep[findfirst((s)->s==dat[i,:Peptide],peptides),j] == 1 ?
+          1 : 0
+        )
+
       end
     end
   end=#
+
+  proteinConditionMatrix = kron(eye(nProteins),[zeros(1,nConditions-1);eye(nConditions-1)])
+
+  referenceAbundanceMatrix = kron(eye(nProteins),ones(nConditions,1))
 
   protToPep = kron(protToPep,eye(nConditions))
 
@@ -119,7 +128,8 @@ function sharedModel(data,compgraphs,compsummary)
     "protToPep" => protToPep,
     "peptideMatrix" => peptideMatrix,
     "peptideConditionMatrix" => peptideConditionMatrix,
-    #"protCondMatrix" => protCondMatrix,
+    "proteinConditionMatrix" => proteinConditionMatrix,
+    "referenceAbundanceMatrix" => referenceAbundanceMatrix,
     "digestMatrix" => digestMatrix,
     "samplePopMatrix" => samplePopMatrix,
     "samplePopToPopMatrix" => samplePopToPopMatrix
@@ -127,7 +137,7 @@ function sharedModel(data,compgraphs,compsummary)
 
   #println(standata)
 
-  model = "
+  model = """
   functions{
     vector lse(matrix X, vector a){
       vector[rows(X)] out;
@@ -146,7 +156,9 @@ function sharedModel(data,compgraphs,compsummary)
     //int<lower=1>nDigestions; //Num Digestions
     //int<lower=1>nSamplePopulations; //Num Samples
     //int<lower=1> nPopulations; //Num populations
-    //matrix<lower=0,upper=1>[N,nProteins*(nConditions-1)] protCondMatrix;
+    //matrix<lower=0,upper=1>[N,nProteins*(nConditions-1)] proteinConditionMatrix;
+    matrix<lower=0,upper=1>[nProteins*nConditions,nProteins*(nConditions-1)] proteinConditionMatrix;
+    matrix<lower=0,upper=1>[nProteins*nConditions,nProteins] referenceAbundanceMatrix;
     matrix<lower=0,upper=1>[nPeptides*nConditions,nProteins*nConditions] protToPep;
     matrix<lower=0,upper=1>[N,nPeptides*nConditions] peptideConditionMatrix;
     matrix<lower=0,upper=1>[N,nPeptides] peptideMatrix;
@@ -160,53 +172,59 @@ function sharedModel(data,compgraphs,compsummary)
     }
 
     parameters{
-      vector[nProteins*nConditions] logProteinIntensity;
-      //vector[(nProteins-1)*nConditions] logRelativeProteinIntensity;
+      vector[nProteins] logProteinReferenceAbundance;
+      vector[nProteins*(nConditions-1)] logProteinFoldChange;
+      //vector[(nProteins-1)*nConditions] logRelativeProteinAbundance;
       //vector[nPeptides] ionisationCoeff;
       real<lower=0> sigmaRes;
     }
 
     transformed parameters{
-      vector[nPeptides*nConditions] logPeptideIntensity;
-      logPeptideIntensity <- lse(protToPep ,logProteinIntensity);// + digestMatrix*epsilonDigest + sampleMatrix*epsilonSample;
+      vector[nProteins*nConditions] logProteinAbundance;
+      vector[nPeptides*nConditions] logPeptideAbundance;
+
+      logProteinAbundance <- referenceAbundanceMatrix*logProteinReferenceAbundance + proteinConditionMatrix*logProteinFoldChange;
+      logPeptideAbundance <- lse(protToPep, logProteinAbundance);// + ionisationCoeff;// digestMatrix*epsilonDigest + sampleMatrix*epsilonSample;
       //for (j in 1:nPeptides*nConditions) {
       //  vector[nProteins] b;
       //  //
       //  for i in 1:nProtein
       //    b[i] <- protToPep
       //
-      //  logPeptideIntensity <- log_sum_exp(b);
+      //  logPeptideAbundance <- log_sum_exp(b);
       //}
     }
 
     model{
-      logProteinIntensity ~ normal(0,10);
+      logProteinAbundance ~ normal(0,10);
+      logProteinFoldChange ~ normal(0,10);
       //ionisationCoeff ~ normal(0,10);
-      //y ~ normal(peptideConditionMatrix*logPeptideIntensity + peptideMatrix*ionisationCoeff,sigmaRes);
-      y ~ student_t(3,peptideConditionMatrix*logPeptideIntensity,sigmaRes);
+      //y ~ normal(peptideConditionMatrix*logPeptideAbundance + peptideMatrix*ionisationCoeff,sigmaRes);
+      sigmaRes ~ student_t(3,0,5);
+      y ~ student_t(3,peptideConditionMatrix*logPeptideAbundance,sigmaRes);
       //logRelativeProteinIntensity ~ normal()
     }
     generated quantities{
-      vector[nProteins*(nConditions-1)] logProteinFoldChange;
-      vector[(nProteins-1)*nConditions] logRelativeProteinIntensity;
+      //vector[nProteins*(nConditions-1)] logProteinFoldChange;
+      vector[(nProteins-1)*nConditions] logRelativeProteinAbundance;
 
-      for (p in 1:nProteins){
+      /*for (p in 1:nProteins){
         for (c in 1:nConditions-1){
           logProteinFoldChange[(p-1)*(nConditions-1) + c] <- logProteinIntensity[(p-1)*nConditions + 1 + c] - logProteinIntensity[(p-1)*nConditions + 1];
         }
-      }
+      }*/
 
       for (c in 1:nConditions){
         for (p in 1:nProteins-1){
-          logRelativeProteinIntensity[(p-1)*nConditions+c] <- logProteinIntensity[p*nConditions + c] - logProteinIntensity[c];
+          logRelativeProteinAbundance[(p-1)*nConditions+c] <- logProteinAbundance[p*nConditions + c] - logProteinAbundance[c];
         }
       }
 
     }
-    "
+    """
 
   numChains = 4
-  initialIters = 50000
+  initialIters = iters
   warmup = 0.5
   thinning =  1
 

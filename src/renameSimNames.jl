@@ -1,17 +1,17 @@
 function renameSimNames(sim::Mamba.Chains,proteins,peptides,conditions)
-    logProteinIntensityIndices = find(s->contains(s,"logProteinIntensity"),sim.names)
+    logProteinAbundanceIndices = find(s->contains(s,"logProteinAbundance"),sim.names)
 
     for p in 1:length(proteins)
       for c in 1:length(conditions)
-        sim.names[logProteinIntensityIndices[(p-1)*length(conditions) + c]] = "logProteinIntensity"*"."*string(proteins[p])*"."*string(conditions[c])
+        sim.names[logProteinAbundanceIndices[(p-1)*length(conditions) + c]] = "logProteinAbundance"*"."*string(proteins[p])*"."*string(conditions[c])
       end
     end
 
-    logPeptideIntensityIndices = find(s->contains(s,"logPeptideIntensity"),sim.names)
+    logPeptideAbundanceIndices = find(s->contains(s,"logPeptideAbundance"),sim.names)
 
     for p in 1:length(peptides)
       for c in 1:length(conditions)
-        sim.names[logPeptideIntensityIndices[(p-1)*length(conditions) + c]] = "logPeptideIntensity"*"."*string(peptides[p])*"."*string(conditions[c])
+        sim.names[logPeptideAbundanceIndices[(p-1)*length(conditions) + c]] = "logPeptideAbundance"*"."*string(peptides[p])*"."*string(conditions[c])
       end
     end
 
@@ -22,10 +22,10 @@ function renameSimNames(sim::Mamba.Chains,proteins,peptides,conditions)
       end
     end
 
-    logRelativeProteinIntensityIndicies = find(s->contains(s,"logRelativeProteinIntensity"),sim.names)
+    logRelativeProteinAbundanceIndicies = find(s->contains(s,"logRelativeProteinAbundance"),sim.names)
     for p in 1:length(proteins)-1
       for c in 1:length(conditions)
-        sim.names[logRelativeProteinIntensityIndicies[(p-1)*length(conditions) + c]] = "logRelativeProteinIntensity"*"."*string(proteins[p+1])*"vs"*string(proteins[1])*"."*string(conditions[c])
+        sim.names[logRelativeProteinAbundanceIndicies[(p-1)*length(conditions) + c]] = "logRelativeProteinAbundance"*"."*string(proteins[p+1])*"vs"*string(proteins[1])*"."*string(conditions[c])
       end
     end
 
