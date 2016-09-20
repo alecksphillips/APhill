@@ -169,7 +169,7 @@ function summariseComponents(dat::DataFrame,g,stringToVertexMap,vertexToStringMa
 end
 
 function GenerateLocations(nProteins,nPeptides)
-  println("nProteins: " * string(nProteins) * "   nPeptides: " * string(nPeptides))
+  #println("nProteins: " * string(nProteins) * "   nPeptides: " * string(nPeptides))
   loc_x = [repeat([-1.0],inner=[nProteins]); repeat([1.0],inner=[nPeptides])]
   if nProteins > 1
     proteinYs = collect(-1.0:(2.0/(nProteins-1)):1.0)
@@ -184,7 +184,7 @@ function GenerateLocations(nProteins,nPeptides)
   end
 
   loc_y = [proteinYs;peptideYs]
-  println(loc_x,loc_y)
+  #println(loc_x,loc_y)
 
   return loc_x,loc_y
 end

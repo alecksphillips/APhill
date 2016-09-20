@@ -1,4 +1,12 @@
 function renameSimNames(sim::Mamba.Chains,proteins,peptides,conditions)
+
+    logProteinReferenceAbundanceIndices = find(s->contains(s,"logProteinReferenceAbundance"),sim.names)
+
+    for p in 1:length(proteins)
+      sim.names[logProteinReferenceAbundanceIndices[p]] = "logProteinReferenceAbundance."*string(proteins[p])
+    end
+
+
     logProteinAbundanceIndices = find(s->contains(s,"logProteinAbundance"),sim.names)
 
     for p in 1:length(proteins)
