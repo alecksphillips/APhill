@@ -180,7 +180,7 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
       vector[nProteins*(nConditions-1)] logProteinFoldChange;
       //vector[(nProteins-1)*nConditions] logRelativeProteinAbundance;
       vector<lower=0,upper=1>[nPeptides] ionisationCoeff;
-      real<lower=0> sigmaRes;
+      //real<lower=0> sigmaRes;
     }
 
     transformed parameters{
@@ -191,7 +191,7 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
       logProteinAbundance <- referenceAbundanceMatrix*logProteinReferenceAbundance + proteinConditionMatrix*logProteinFoldChange;
       logPeptideAbundance <- lse(protToPep, logProteinAbundance);// + ionisationCoeff;// digestMatrix*epsilonDigest + sampleMatrix*epsilonSample;
 
-      logPeptideIntensity <- peptideMapMatrix*log(ionisationCoeff) .* logPeptideAbundance;
+      logPeptideIntensity <- peptideMapMatrix*log(ionisationCoeff) + logPeptideAbundance;
       //for (j in 1:nPeptides*nConditions) {
       //  vector[nProteins] b;
       //  //
@@ -203,12 +203,12 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     }
 
     model{
-      logProteinAbundance ~ normal(0,10);
+      logProteinReferenceAbundance ~ normal(0,10);
       logProteinFoldChange ~ normal(0,10);
       ionisationCoeff ~ beta(5,1);
       //y ~ normal(peptideConditionMatrix*logPeptideAbundance + peptideMatrix*ionisationCoeff,sigmaRes);
-      sigmaRes ~ student_t(3,0,5);
-      y ~ student_t(3,peptideConditionMatrix*logPeptideIntensity,sigmaRes);
+      //sigmaRes ~ student_t(3,0,5);
+      y ~ student_t(3,peptideConditionMatrix*logPeptideIntensity,0.1);
       //logRelativeProteinIntensity ~ normal()
     }
     generated quantities{
