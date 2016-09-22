@@ -52,6 +52,8 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
 
   referenceAbundanceMatrix = kron(eye(nProteins),ones(nConditions,1))
 
+  peptideMapMatrix = kron(eye(nPeptides),ones(nConditions,1))
+
   protToPep = kron(protToPep,eye(nConditions))
 
   peptideConditionMatrix = Array{UInt8,2}(N,nPeptides*nConditions)
@@ -130,6 +132,7 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     "peptideConditionMatrix" => peptideConditionMatrix,
     "proteinConditionMatrix" => proteinConditionMatrix,
     "referenceAbundanceMatrix" => referenceAbundanceMatrix,
+    "peptideMapMatrix" => peptideMapMatrix,
     "digestMatrix" => digestMatrix,
     "samplePopMatrix" => samplePopMatrix,
     "samplePopToPopMatrix" => samplePopToPopMatrix
@@ -159,6 +162,7 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     //matrix<lower=0,upper=1>[N,nProteins*(nConditions-1)] proteinConditionMatrix;
     matrix<lower=0,upper=1>[nProteins*nConditions,nProteins*(nConditions-1)] proteinConditionMatrix;
     matrix<lower=0,upper=1>[nProteins*nConditions,nProteins] referenceAbundanceMatrix;
+    matrix<lower=0,upper=1>[nPeptides*nConditions,nPeptides] peptideMapMatrix;
     matrix<lower=0,upper=1>[nPeptides*nConditions,nProteins*nConditions] protToPep;
     matrix<lower=0,upper=1>[N,nPeptides*nConditions] peptideConditionMatrix;
     matrix<lower=0,upper=1>[N,nPeptides] peptideMatrix;
@@ -175,16 +179,19 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
       vector[nProteins] logProteinReferenceAbundance;
       vector[nProteins*(nConditions-1)] logProteinFoldChange;
       //vector[(nProteins-1)*nConditions] logRelativeProteinAbundance;
-      //vector[nPeptides] ionisationCoeff;
+      vector<lower=0,upper=1>[nPeptides] ionisationCoeff;
       real<lower=0> sigmaRes;
     }
 
     transformed parameters{
       vector[nProteins*nConditions] logProteinAbundance;
       vector[nPeptides*nConditions] logPeptideAbundance;
+      vector[nPeptides*nConditions] logPeptideIntensity;
 
       logProteinAbundance <- referenceAbundanceMatrix*logProteinReferenceAbundance + proteinConditionMatrix*logProteinFoldChange;
       logPeptideAbundance <- lse(protToPep, logProteinAbundance);// + ionisationCoeff;// digestMatrix*epsilonDigest + sampleMatrix*epsilonSample;
+
+      logPeptideIntensity <- peptideMapMatrix*log(ionisationCoeff) .* logPeptideAbundance;
       //for (j in 1:nPeptides*nConditions) {
       //  vector[nProteins] b;
       //  //
@@ -198,10 +205,10 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     model{
       logProteinAbundance ~ normal(0,10);
       logProteinFoldChange ~ normal(0,10);
-      //ionisationCoeff ~ normal(0,10);
+      ionisationCoeff ~ beta(5,1);
       //y ~ normal(peptideConditionMatrix*logPeptideAbundance + peptideMatrix*ionisationCoeff,sigmaRes);
       sigmaRes ~ student_t(3,0,5);
-      y ~ student_t(3,peptideConditionMatrix*logPeptideAbundance,sigmaRes);
+      y ~ student_t(3,peptideConditionMatrix*logPeptideIntensity,sigmaRes);
       //logRelativeProteinIntensity ~ normal()
     }
     generated quantities{
