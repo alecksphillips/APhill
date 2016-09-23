@@ -142,7 +142,9 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     vector lse(matrix X, vector a){
       vector[rows(X)] out;
       for (i in 1:rows(X))
-        out[i] = log_sum_exp(log_sum_exp(row(X,i)' .* a) ,-cols(X) + sum(row(X,i)));
+      {
+        out[i] <- log_sum_exp(log_sum_exp(row(X,i)' .* a) ,-cols(X) + sum(row(X,i)));
+      }
       return out;
     }
   }
