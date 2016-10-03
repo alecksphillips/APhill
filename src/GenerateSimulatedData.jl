@@ -26,7 +26,7 @@ function GenerateSimulatedData(
   end
 
   samps = [string(i) for i in 1:nSamples]
-  samples = [conds[Integer(ceil(i/nSamples))]*"."*samps[(i+2)%nSamples+1] for i in 1:nConditions*nSamples]
+  samples = [conds[Integer(ceil(i/nSamples))]*"."*samps[(i-1)%nSamples+1] for i in 1:nConditions*nSamples]
 
   peptideIntensity = Array{Float64,2}(nPeptides,nConditions)
   for j in 1:nConditions
