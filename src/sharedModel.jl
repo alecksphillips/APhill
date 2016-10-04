@@ -23,38 +23,41 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     protToPep[row,col] = 1
   end
 
-  dat = unique(dat[:,[:Peptide,:Condition,:Sample,:Digestion,:Population,:LogIntensity]])
+  dat = unique(dat[:,[:Feature,:Peptide,:Condition,:Sample,:Population,:Count]])
+  features = levels(dat[:Feature])
   conditions = levels(dat[:Condition])
-  digestions = levels(dat[:Digestion])
+  #digestions = levels(dat[:Digestion])
+
+  samples = levels(dat[:Sample])
+  nSamples = Integer(length(samples)/length(conditions))
+
+
+  peptideFeatureMap = zeros(length(features),length(peptides))
+
+  for f in 1:length(features)
+    p = findfirst(peptides,dat[dat[:Feature].==features[f],:][1,:Peptide])
+    peptideFeatureMap[f,p] = 1
+  end
 
   N = size(dat)[1]
   nPeptides = length(peptides)
   nProteins = length(proteins)
+  nFeatures = length(features)
   nConditions = length(conditions)
-  nDigestions = length(digestions)
-
-  #=proteinConditionMatrix = Array{UInt8,2}(N,nProteins*(nConditions-1))
-  for j in 1:nProteins
-    for c in 1:nConditions-1
-      for i in 1:N
-        print("column: $((j-1)*(nConditions-1) + c)\n")
-        proteinConditionMatrix[i,(j-1)*(nConditions-1) + c] = (
-          dat[i,:Condition] == conditions[c+1]
-          && protToPep[findfirst((s)->s==dat[i,:Peptide],peptides),j] == 1 ?
-          1 : 0
-        )
-
-      end
-    end
-  end=#
+  #nDigestions = length(digestions)
 
   proteinConditionMatrix = kron(eye(nProteins),[zeros(1,nConditions-1);eye(nConditions-1)])
 
   referenceAbundanceMatrix = kron(eye(nProteins),ones(nConditions,1))
 
+  proteinSampleMatrix = kron(eye(nProteins*nConditions),ones(nSamples,1))
+
+  peptideSampleToFeatureSampleMap = kron(peptideFeatureMap,eye(nConditions*nSamples))
+  ionisationMap = kron(eye(nFeatures),ones(nSamples*nConditions,1))
+
   peptideMapMatrix = kron(eye(nPeptides),ones(nConditions,1))
 
-  protToPep = kron(protToPep,eye(nConditions))
+  protToPep = kron(protToPep,eye(nConditions*nSamples))
 
   peptideConditionMatrix = Array{UInt8,2}(N,nPeptides*nConditions)
   for j in 1:nPeptides
@@ -80,14 +83,14 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
 
 
 
-  digestMatrix = Array{UInt8,2}(N,nDigestions*nPeptides)
+  #=digestMatrix = Array{UInt8,2}(N,nDigestions*nPeptides)
   for k in 1:nPeptides
     for j in 1:nDigestions
       for i in 1:N
         digestMatrix[i,(nPeptides)*(j-1) + k] = (dat[i,:Peptide] == peptides[k] && dat[i,:Digestion] == digestions[j] ? 1 : 0)
       end
     end
-  end
+  end=#
 
   samples = levels(dat[:Sample])
   populations = levels(dat[:Population])
@@ -96,9 +99,22 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
 
   samplePopulations = levels(dat[:SamplePopulation])
 
-  nSamples = length(samples)
+  #nSamples = length(samples)
   nPopulations = length(populations)
   nSamplePopulations = length(samplePopulations)
+
+  samplePopulationMap = zeros(nSamples*nConditions,nPopulations)
+  tmp = unique(dat[:,[:Sample,:Population]])
+  println(populations)
+  for s in 1:length(samples)
+    println("pop: " * string(tmp[tmp[:Sample].==samples[s],:][1,:Population]))
+    a = findfirst(populations,tmp[tmp[:Sample].==samples[s],:][1,:Population])
+    println(string(s)*","*string(a))
+    samplePopulationMap[s,a] = 1.0
+  end
+  println(samplePopulationMap)
+  proteinPopulationMatrix = kron(eye(nProteins),samplePopulationMap)
+
 
   samplePopMatrix = Array{UInt8,2}(N,nSamplePopulations)
   for j in 1:nSamplePopulations
@@ -115,7 +131,8 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
   end
 
 
-  intensity = [dat[i,:LogIntensity] for i in 1:size(dat)[1]]
+  #intensity = [dat[i,:LogIntensity] for i in 1:size(dat)[1]]
+  intensity = [dat[i,:Count] for i in 1:size(dat)[1]]
 
   standata = [Dict{String,Any}(
     "N" => N,
@@ -123,7 +140,11 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     "nProteins" => nProteins,
     "nPeptides" => nPeptides,
     "nConditions" => nConditions,
-    "nDigestions" => nDigestions,
+
+    "nFeatures"=> nFeatures,
+
+    #"nDigestions" => nDigestions,
+
     "nSamples" => nSamples,
     "nPopulations" => nPopulations,
     "nSamplePopulations" => nSamplePopulations,
@@ -132,13 +153,19 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     "peptideConditionMatrix" => peptideConditionMatrix,
     "proteinConditionMatrix" => proteinConditionMatrix,
     "referenceAbundanceMatrix" => referenceAbundanceMatrix,
+    "proteinSampleMatrix" => proteinSampleMatrix,
+
+    "peptideSampleToFeatureSampleMap" => peptideSampleToFeatureSampleMap,
+    "ionisationMap" => ionisationMap,
+    "proteinPopulationMatrix" => proteinPopulationMatrix,
+
     "peptideMapMatrix" => peptideMapMatrix,
-    "digestMatrix" => digestMatrix,
+    #"digestMatrix" => digestMatrix,
     "samplePopMatrix" => samplePopMatrix,
     "samplePopToPopMatrix" => samplePopToPopMatrix
   )]
 
-  #println(standata)
+  println(proteinPopulationMatrix)
 
   model = """
   functions{
@@ -154,24 +181,39 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
 
   data{
     int N; //Number of data points;
-    vector[N] y; //Response
+    int<lower=0> y[N]; //Response
+
+
     int<lower=1>nProteins; //Num proteins
     int<lower=1>nPeptides; //Num peptides
     int<lower=1>nConditions; //Num Conditions
+
+    int<lower=1>nSamples; //NUm samples per condition
+    int<lower=1>nFeatures;//Total number of LC-MS features
+
     //int<lower=1>nDigestions; //Num Digestions
     //int<lower=1>nSamplePopulations; //Num Samples
-    //int<lower=1> nPopulations; //Num populations
-    //matrix<lower=0,upper=1>[N,nProteins*(nConditions-1)] proteinConditionMatrix;
+    int<lower=1> nPopulations; //Num populations
+
     matrix<lower=0,upper=1>[nProteins*nConditions,nProteins*(nConditions-1)] proteinConditionMatrix;
     matrix<lower=0,upper=1>[nProteins*nConditions,nProteins] referenceAbundanceMatrix;
+
+    matrix<lower=0,upper=1>[nProteins*nSamples*nConditions,nProteins*nConditions] proteinSampleMatrix;
+    matrix<lower=0,upper=1>[nFeatures*nSamples*nConditions,nPeptides*nSamples*nConditions] peptideSampleToFeatureSampleMap;
+    matrix<lower=0,upper=1>[nFeatures*nSamples*nConditions,nFeatures] ionisationMap;
+
     matrix<lower=0,upper=1>[nPeptides*nConditions,nPeptides] peptideMapMatrix;
-    matrix<lower=0,upper=1>[nPeptides*nConditions,nProteins*nConditions] protToPep;
+    matrix<lower=0,upper=1>[nPeptides*nConditions*nSamples,nProteins*nConditions*nSamples] protToPep;
     matrix<lower=0,upper=1>[N,nPeptides*nConditions] peptideConditionMatrix;
     matrix<lower=0,upper=1>[N,nPeptides] peptideMatrix;
-    //matrix<lower=0,upper=1>[N,nDigestions*nPeptides] digestMatrix;
 
+    matrix<lower=0,upper=1>[nProteins*nSamples*nConditions,nProteins*nPopulations] proteinPopulationMatrix;
+
+    //matrix<lower=0,upper=1>[N,nDigestions*nPeptides] digestMatrix;
     //matrix<lower=0,upper=1>[N,nSamplePopulations] samplePopMatrix;
     //matrix<lower=0,upper=1>[nSamplePopulations,nPopulations] samplePopToPopMatrix;
+
+
     }
 
     transformed data{
@@ -180,48 +222,39 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     parameters{
       vector[nProteins] logProteinReferenceAbundance;
       vector[nProteins*(nConditions-1)] logProteinFoldChange;
-      //vector[(nProteins-1)*nConditions] logRelativeProteinAbundance;
-      vector<lower=0,upper=1>[nPeptides] ionisationCoeff;
-      //real<lower=0> sigmaRes;
+      vector[nProteins*nConditions*nSamples] logProteinSampleAbundance;
+      vector<lower=0,upper=1>[nFeatures] ionisationCoeff;
+      vector<lower=0>[nProteins*nPopulations] sigma_population;
     }
 
     transformed parameters{
       vector[nProteins*nConditions] logProteinAbundance;
-      vector[nPeptides*nConditions] logPeptideAbundance;
-      vector[nPeptides*nConditions] logPeptideIntensity;
+
+      vector[nPeptides*nConditions*nSamples] logPeptideSampleAbundance;
+      vector[N] logFeatureSampleIntensity;
 
       logProteinAbundance <- referenceAbundanceMatrix*logProteinReferenceAbundance + proteinConditionMatrix*logProteinFoldChange;
-      logPeptideAbundance <- lse(protToPep, logProteinAbundance);// + ionisationCoeff;// digestMatrix*epsilonDigest + sampleMatrix*epsilonSample;
 
-      logPeptideIntensity <- peptideMapMatrix*log(ionisationCoeff) + logPeptideAbundance;
-      //for (j in 1:nPeptides*nConditions) {
-      //  vector[nProteins] b;
-      //  //
-      //  for i in 1:nProtein
-      //    b[i] <- protToPep
-      //
-      //  logPeptideAbundance <- log_sum_exp(b);
-      //}
+      logPeptideSampleAbundance <- lse(protToPep, logProteinSampleAbundance);
+
+      logFeatureSampleIntensity <- ionisationMap*log(ionisationCoeff) + peptideSampleToFeatureSampleMap*logPeptideSampleAbundance;
     }
 
     model{
       logProteinReferenceAbundance ~ normal(0,10);
       logProteinFoldChange ~ normal(0,10);
-      ionisationCoeff ~ beta(5,1);
-      //y ~ normal(peptideConditionMatrix*logPeptideAbundance + peptideMatrix*ionisationCoeff,sigmaRes);
-      //sigmaRes ~ student_t(3,0,5);
-      y ~ student_t(3,peptideConditionMatrix*logPeptideIntensity,0.1);
-      //logRelativeProteinIntensity ~ normal()
+
+      //Is there a sensible prior?
+      //ionisationCoeff ~ beta(1,1);
+
+      sigma_population ~ student_t(3,0,5);
+
+      logProteinSampleAbundance ~ normal(proteinSampleMatrix*logProteinAbundance,proteinPopulationMatrix*sigma_population);
+
+      y ~ poisson(exp(logFeatureSampleIntensity));
     }
     generated quantities{
-      //vector[nProteins*(nConditions-1)] logProteinFoldChange;
       vector[(nProteins-1)*nConditions] logRelativeProteinAbundance;
-
-      /*for (p in 1:nProteins){
-        for (c in 1:nConditions-1){
-          logProteinFoldChange[(p-1)*(nConditions-1) + c] <- logProteinIntensity[(p-1)*nConditions + 1 + c] - logProteinIntensity[(p-1)*nConditions + 1];
-        }
-      }*/
 
       for (c in 1:nConditions){
         for (p in 1:nProteins-1){

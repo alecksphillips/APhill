@@ -1,4 +1,4 @@
-function renameSimNames(sim::Mamba.Chains,proteins,peptides,conditions)
+function renameSimNames(sim::Mamba.Chains,proteins,peptides,features,conditions)
 
   logProteinReferenceAbundanceIndices = find(s->contains(s,"logProteinReferenceAbundance"),sim.names)
 
@@ -15,26 +15,28 @@ function renameSimNames(sim::Mamba.Chains,proteins,peptides,conditions)
     end
   end
 
-  logPeptideAbundanceIndices = find(s->contains(s,"logPeptideAbundance"),sim.names)
+#=  logPeptideAbundanceIndices = find(s->contains(s,"logPeptideAbundance"),sim.names)
 
   for p in 1:length(peptides)
     for c in 1:length(conditions)
       sim.names[logPeptideAbundanceIndices[(p-1)*length(conditions) + c]] = "logPeptideAbundance"*"."*string(peptides[p])*"."*string(conditions[c])
     end
   end
+=#
 
-  logPeptideIntensityIndices = find(s->contains(s,"logPeptideIntensity"),sim.names)
+  #=logPeptideIntensityIndices = find(s->contains(s,"logPeptideIntensity"),sim.names)
 
   for p in 1:length(peptides)
     for c in 1:length(conditions)
       sim.names[logPeptideIntensityIndices[(p-1)*length(conditions) + c]] = "logPeptideIntensity"*"."*string(peptides[p])*"."*string(conditions[c])
     end
   end
+=#
 
   ionisationCoeffIndices = find(s->contains(s,"ionisationCoeff"),sim.names)
 
-  for p in 1:length(peptides)
-    sim.names[ionisationCoeffIndices[p]] = "ionisationCoeff"*"."*string(peptides[p])
+  for f in 1:length(features)
+    sim.names[ionisationCoeffIndices[f]] = "ionisationCoeff"*"."*string(features[f])
   end
 
   logProteinFoldChangeIndices = find(s->contains(s,"logProteinFoldChange"),sim.names)
