@@ -23,7 +23,14 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     protToPep[row,col] = 1
   end
 
-  dat = unique(dat[:,[:Feature,:Peptide,:Condition,:Sample,:Population,:Count]])
+  cols = filter(
+    (s) -> !contains(string(s),"Protein"),
+    names(dat)
+  )
+
+  #dat = unique(dat[:,[:Feature,:Peptide,:Condition,:Sample,:Population,:Count]])
+  dat = unique(dat[:,cols])
+
   features = levels(dat[:Feature])
   conditions = levels(dat[:Condition])
   #digestions = levels(dat[:Digestion])
