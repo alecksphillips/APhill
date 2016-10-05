@@ -1,3 +1,5 @@
+using LightGraphs
+
 function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
   prots = levels(data[:Protein])
   #println(prots)
@@ -31,6 +33,15 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
   #dat = unique(dat[:,[:Feature,:Peptide,:Condition,:Sample,:Population,:Count]])
   dat = unique(dat[:,cols])
 
+  tmp = unique(dat[:,[:Peptide,:Feature]])
+  nFeatures = Array{Int64,1}(length(peptides))
+  for i in 1:length(peptides)
+    nFeatures[i]  = size(levels(tmp[tmp[:Peptide].==peptides[i],:][:Feature]))[1]
+  end
+
+  maxNFeatures = maximum(nFeatures)
+
+
   features = levels(dat[:Feature])
   conditions = levels(dat[:Condition])
   #digestions = levels(dat[:Digestion])
@@ -40,7 +51,6 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
 
 
   peptideFeatureMap = zeros(length(features),length(peptides))
-
   for f in 1:length(features)
     p = findfirst(peptides,dat[dat[:Feature].==features[f],:][1,:Peptide])
     peptideFeatureMap[f,p] = 1
@@ -49,7 +59,7 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
   N = size(dat)[1]
   nPeptides = length(peptides)
   nProteins = length(proteins)
-  nFeatures = length(features)
+  totalNFeatures = length(features)
   nConditions = length(conditions)
   #nDigestions = length(digestions)
 
@@ -60,7 +70,23 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
   proteinSampleMatrix = kron(eye(nProteins*nConditions),ones(nSamples,1))
 
   peptideSampleToFeatureSampleMap = kron(peptideFeatureMap,eye(nConditions*nSamples))
-  ionisationMap = kron(eye(nFeatures),ones(nSamples*nConditions,1))
+
+  ionisationCoeffToFeatureMap = zeros(totalNFeatures,totalNFeatures+nPeptides)
+  for p in 1:nPeptides
+    for f in 1:nFeatures[p]
+      a = cumsum(nFeatures)[p] - nFeatures[p]
+      b = a + p
+      ionisationCoeffToFeatureMap[a+f,b+f]=1.0
+    end
+  end
+
+  ionisationMap = kron(ionisationCoeffToFeatureMap,ones(nSamples*nConditions,1))
+
+  dirichletPrior = Array{Float64,1}(maxNFeatures + 1)
+  dirichletPrior[1] = 0.1
+  for f in 2:maxNFeatures+1
+    dirichletPrior[f] = 1.0
+  end
 
   peptideMapMatrix = kron(eye(nPeptides),ones(nConditions,1))
 
@@ -149,6 +175,8 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     "nConditions" => nConditions,
 
     "nFeatures"=> nFeatures,
+    "maxNFeatures"=>maxNFeatures,
+    "totalNFeatures"=>totalNFeatures,
 
     #"nDigestions" => nDigestions,
 
@@ -164,6 +192,8 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
 
     "peptideSampleToFeatureSampleMap" => peptideSampleToFeatureSampleMap,
     "ionisationMap" => ionisationMap,
+    "dirichletPrior" => dirichletPrior,
+
     "proteinPopulationMatrix" => proteinPopulationMatrix,
 
     "peptideMapMatrix" => peptideMapMatrix,
@@ -172,7 +202,7 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     "samplePopToPopMatrix" => samplePopToPopMatrix
   )]
 
-  println(proteinPopulationMatrix)
+  #println(proteinPopulationMatrix)
 
   model = """
   functions{
@@ -190,13 +220,16 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     int N; //Number of data points;
     int<lower=0> y[N]; //Response
 
-
     int<lower=1>nProteins; //Num proteins
     int<lower=1>nPeptides; //Num peptides
     int<lower=1>nConditions; //Num Conditions
 
     int<lower=1>nSamples; //NUm samples per condition
-    int<lower=1>nFeatures;//Total number of LC-MS features
+    int <lower=0> nFeatures[nPeptides]; //Number of LC-MS features corresponding to each peptide
+    int<lower=1>totalNFeatures;//Total number of LC-MS features
+    int<lower=1> maxNFeatures; //Most features in a single peptide
+
+    vector[maxNFeatures+1] dirichletPrior;
 
     //int<lower=1>nDigestions; //Num Digestions
     //int<lower=1>nSamplePopulations; //Num Samples
@@ -206,8 +239,8 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     matrix<lower=0,upper=1>[nProteins*nConditions,nProteins] referenceAbundanceMatrix;
 
     matrix<lower=0,upper=1>[nProteins*nSamples*nConditions,nProteins*nConditions] proteinSampleMatrix;
-    matrix<lower=0,upper=1>[nFeatures*nSamples*nConditions,nPeptides*nSamples*nConditions] peptideSampleToFeatureSampleMap;
-    matrix<lower=0,upper=1>[nFeatures*nSamples*nConditions,nFeatures] ionisationMap;
+    matrix<lower=0,upper=1>[totalNFeatures*nSamples*nConditions,nPeptides*nSamples*nConditions] peptideSampleToFeatureSampleMap;
+    matrix<lower=0,upper=1>[totalNFeatures*nSamples*nConditions,totalNFeatures+nPeptides] ionisationMap;
 
     matrix<lower=0,upper=1>[nPeptides*nConditions,nPeptides] peptideMapMatrix;
     matrix<lower=0,upper=1>[nPeptides*nConditions*nSamples,nProteins*nConditions*nSamples] protToPep;
@@ -230,7 +263,7 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
       vector[nProteins] logProteinReferenceAbundance;
       vector[nProteins*(nConditions-1)] logProteinFoldChange;
       vector[nProteins*nConditions*nSamples] logProteinSampleAbundance;
-      vector<lower=0,upper=1>[nFeatures] ionisationCoeff;
+      vector<lower=0,upper=1> [totalNFeatures+nPeptides] ionisationCoeff;
       vector<lower=0>[nProteins*nPopulations] sigma_population;
     }
 
@@ -248,13 +281,25 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     }
 
     model{
+
+      int pos;
+
       logProteinReferenceAbundance ~ normal(0,10);
       logProteinFoldChange ~ normal(0,10);
 
       //Is there a sensible prior?
       //ionisationCoeff ~ beta(1,1);
+      pos = 1;
+      for (p in 1:nPeptides){
+        segment(ionisationCoeff, pos, nFeatures[p] + 1) ~ dirichlet(segment(dirichletPrior,1,nFeatures[p]+1));
+        pos = pos + nFeatures[p] + 1;
+      }
+
+
 
       sigma_population ~ student_t(3,0,5);
+
+
 
       logProteinSampleAbundance ~ normal(proteinSampleMatrix*logProteinAbundance,proteinPopulationMatrix*sigma_population);
 
