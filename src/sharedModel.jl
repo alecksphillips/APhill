@@ -82,10 +82,13 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
 
   ionisationMap = kron(ionisationCoeffToFeatureMap,ones(nSamples*nConditions,1))
 
-  dirichletPrior = Array{Float64,1}(maxNFeatures + 1)
-  dirichletPrior[1] = 0.1
-  for f in 2:maxNFeatures+1
-    dirichletPrior[f] = 1.0
+  dirichletPrior = Array{Float64,1}(totalNFeatures + nPeptides)
+  for p in 1:nPeptides
+    a = cumsum(nFeatures)[p] - nFeatures[p]
+    dirichletPrior[a+1] = 0.1
+    for f in 2:nFeatures[p]+1
+      dirichletPrior[a+f] = 1.0
+    end
   end
 
   peptideMapMatrix = kron(eye(nPeptides),ones(nConditions,1))
@@ -214,6 +217,19 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
       }
       return out;
     }
+
+    int[] cumulative_sum(int[] a)
+    {
+      int out[size(a)];
+      out[1] = a[1];
+
+      for (i in 2:size(a))
+      {
+        out[i] = a[i] + out[i-1];
+      }
+
+      return out;
+    }
   }
 
   data{
@@ -229,7 +245,7 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     int<lower=1>totalNFeatures;//Total number of LC-MS features
     int<lower=1> maxNFeatures; //Most features in a single peptide
 
-    vector[maxNFeatures+1] dirichletPrior;
+    vector[totalNFeatures+nPeptides] dirichletPrior;
 
     //int<lower=1>nDigestions; //Num Digestions
     //int<lower=1>nSamplePopulations; //Num Samples
@@ -263,7 +279,7 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
       vector[nProteins] logProteinReferenceAbundance;
       vector[nProteins*(nConditions-1)] logProteinFoldChange;
       vector[nProteins*nConditions*nSamples] logProteinSampleAbundance;
-      vector<lower=0,upper=1> [totalNFeatures+nPeptides] ionisationCoeff;
+      vector<lower=0> [totalNFeatures+nPeptides] raw_ionisationCoeff;
       vector<lower=0>[nProteins*nPopulations] sigma_population;
     }
 
@@ -273,9 +289,28 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
       vector[nPeptides*nConditions*nSamples] logPeptideSampleAbundance;
       vector[N] logFeatureSampleIntensity;
 
+      vector<lower=0> [totalNFeatures+nPeptides] ionisationCoeff;
+
       logProteinAbundance <- referenceAbundanceMatrix*logProteinReferenceAbundance + proteinConditionMatrix*logProteinFoldChange;
 
       logPeptideSampleAbundance <- lse(protToPep, logProteinSampleAbundance);
+
+      for (p in 1:nPeptides){
+        int pos;
+        vector[nFeatures[p]+1] lambda;
+
+        pos = cumulative_sum(nFeatures)[p] - nFeatures[p] + p;
+
+        lambda = segment(raw_ionisationCoeff, pos, nFeatures[p] + 1);
+        lambda = lambda / sum(lambda);
+
+        for (f in 1:nFeatures[p]+1)
+        {
+          ionisationCoeff[pos-1 + f] <- lambda[f];
+        }
+        //pos = pos + nFeatures[p] + 1;
+      }
+
 
       logFeatureSampleIntensity <- ionisationMap*log(ionisationCoeff) + peptideSampleToFeatureSampleMap*logPeptideSampleAbundance;
     }
@@ -290,12 +325,17 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
       //Is there a sensible prior?
       //ionisationCoeff ~ beta(1,1);
       pos = 1;
+
       for (p in 1:nPeptides){
-        segment(ionisationCoeff, pos, nFeatures[p] + 1) ~ dirichlet(segment(dirichletPrior,1,nFeatures[p]+1));
+        vector[nFeatures[p]+1] lambda;
+        lambda = segment(ionisationCoeff, pos, nFeatures[p] + 1);
+        lambda = lambda / sum(lambda);
+        //~ dirichlet(segment(dirichletPrior,1,nFeatures[p]+1));
         pos = pos + nFeatures[p] + 1;
       }
 
-
+      #target += gamma_lpdf(ionisationCoeff | dirichletPrior, 1.0);
+      raw_ionisationCoeff ~ gamma(dirichletPrior,1.0);
 
       sigma_population ~ student_t(3,0,5);
 
