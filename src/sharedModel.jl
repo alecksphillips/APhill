@@ -84,12 +84,14 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
 
   dirichletPrior = Array{Float64,1}(totalNFeatures + nPeptides)
   for p in 1:nPeptides
-    a = cumsum(nFeatures)[p] - nFeatures[p]
+    a = cumsum(nFeatures)[p] - nFeatures[p] + p-1
     dirichletPrior[a+1] = 0.1
     for f in 2:nFeatures[p]+1
       dirichletPrior[a+f] = 1.0
     end
   end
+
+  println(dirichletPrior)
 
   peptideMapMatrix = kron(eye(nPeptides),ones(nConditions,1))
 
@@ -273,6 +275,14 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     }
 
     transformed data{
+
+      int posArray[nPeptides];
+
+      for (p in 1:nPeptides)
+      {
+        posArray[p] = cumulative_sum(nFeatures)[p] - nFeatures[p] + p;
+      }
+
     }
 
     parameters{
@@ -299,7 +309,7 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
         int pos;
         vector[nFeatures[p]+1] lambda;
 
-        pos = cumulative_sum(nFeatures)[p] - nFeatures[p] + p;
+        pos = posArray[p];
 
         lambda = segment(raw_ionisationCoeff, pos, nFeatures[p] + 1);
         lambda = lambda / sum(lambda);
@@ -308,7 +318,6 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
         {
           ionisationCoeff[pos-1 + f] <- lambda[f];
         }
-        //pos = pos + nFeatures[p] + 1;
       }
 
 
@@ -326,13 +335,13 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
       //ionisationCoeff ~ beta(1,1);
       pos = 1;
 
-      for (p in 1:nPeptides){
+      /*for (p in 1:nPeptides){
         vector[nFeatures[p]+1] lambda;
         lambda = segment(ionisationCoeff, pos, nFeatures[p] + 1);
         lambda = lambda / sum(lambda);
         //~ dirichlet(segment(dirichletPrior,1,nFeatures[p]+1));
         pos = pos + nFeatures[p] + 1;
-      }
+      }*/
 
       #target += gamma_lpdf(ionisationCoeff | dirichletPrior, 1.0);
       raw_ionisationCoeff ~ gamma(dirichletPrior,1.0);
