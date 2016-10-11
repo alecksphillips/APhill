@@ -232,6 +232,16 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
 
       return out;
     }
+
+    vector anscombe(int[] a)
+    {
+      vector[size(a)] out;
+
+      for (i in 1:size(a))
+      {
+        out[i] = 2*sqrt(a[i] + 3/8)
+      }
+    }
   }
 
   data{
@@ -277,6 +287,7 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     transformed data{
 
       int posArray[nPeptides];
+      vector[size(y)] anscY;
 
       for (p in 1:nPeptides)
       {
@@ -352,7 +363,7 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
 
       logProteinSampleAbundance ~ normal(proteinSampleMatrix*logProteinAbundance,proteinPopulationMatrix*sigma_population);
 
-      y ~ poisson(exp(logFeatureSampleIntensity));
+      anscY ~ normal(exp(logFeatureSampleIntensity),1.0);
     }
     generated quantities{
       vector[(nProteins-1)*nConditions] logRelativeProteinAbundance;
