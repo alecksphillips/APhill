@@ -1,6 +1,6 @@
 using LightGraphs
 
-function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
+function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000, numChains::Integer = 4)
   prots = levels(data[:Protein])
   #println(prots)
   verts = [compgraphs[compsummary[1,:ID]][3][v] for v in vertices(compgraphs[compsummary[1,:ID]][1])]
@@ -291,6 +291,7 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
       vector[nProteins*nConditions*nSamples] logProteinSampleAbundance;
       vector<lower=0> [totalNFeatures+nPeptides] raw_ionisationCoeff;
       vector<lower=0>[nProteins*nPopulations] sigma_population;
+      real<lower=0> sigma_res;
     }
 
     transformed parameters{
@@ -326,33 +327,20 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
 
     model{
 
-      int pos;
+      vector[N] res;
 
       logProteinReferenceAbundance ~ normal(0,10);
       logProteinFoldChange ~ normal(0,10);
-
-      //Is there a sensible prior?
-      //ionisationCoeff ~ beta(1,1);
-      pos = 1;
-
-      /*for (p in 1:nPeptides){
-        vector[nFeatures[p]+1] lambda;
-        lambda = segment(ionisationCoeff, pos, nFeatures[p] + 1);
-        lambda = lambda / sum(lambda);
-        //~ dirichlet(segment(dirichletPrior,1,nFeatures[p]+1));
-        pos = pos + nFeatures[p] + 1;
-      }*/
-
-      #target += gamma_lpdf(ionisationCoeff | dirichletPrior, 1.0);
       raw_ionisationCoeff ~ gamma(dirichletPrior,1.0);
 
       sigma_population ~ student_t(3,0,5);
-
-
+      sigma_res ~ student(3,0,5);
 
       logProteinSampleAbundance ~ normal(proteinSampleMatrix*logProteinAbundance,proteinPopulationMatrix*sigma_population);
 
-      y ~ poisson(exp(logFeatureSampleIntensity));
+      res ~ student(3,0,sigma_res);
+
+      y ~ poisson(exp(logFeatureSampleIntensity + res));
     }
     generated quantities{
       vector[(nProteins-1)*nConditions] logRelativeProteinAbundance;
@@ -366,7 +354,7 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000)
     }
     """
 
-  numChains = 4
+  #numChains = 4
   initialIters = iters
   warmup = 0.5
   thinning =  1
