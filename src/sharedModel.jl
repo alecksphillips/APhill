@@ -292,6 +292,8 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000, numChai
       vector<lower=0> [totalNFeatures+nPeptides] raw_ionisationCoeff;
       vector<lower=0>[nProteins*nPopulations] sigma_population;
       real<lower=0> sigma_res;
+      vector[N] res;
+
     }
 
     transformed parameters{
@@ -327,19 +329,17 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000, numChai
 
     model{
 
-      vector[N] res;
 
       logProteinReferenceAbundance ~ normal(0,10);
       logProteinFoldChange ~ normal(0,10);
       raw_ionisationCoeff ~ gamma(dirichletPrior,1.0);
 
       sigma_population ~ student_t(3,0,5);
-      sigma_res ~ student(3,0,5);
+      sigma_res ~ student_t(3,0,5);
 
       logProteinSampleAbundance ~ normal(proteinSampleMatrix*logProteinAbundance,proteinPopulationMatrix*sigma_population);
-
-      res ~ student(3,0,sigma_res);
-
+      
+      res ~ student_t(3,0,sigma_res);
       y ~ poisson(exp(logFeatureSampleIntensity + res));
     }
     generated quantities{
