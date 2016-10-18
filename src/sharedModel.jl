@@ -288,7 +288,8 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000, numChai
     parameters{
       vector[nProteins] logProteinReferenceAbundance;
       vector[nProteins*(nConditions-1)] logProteinFoldChange;
-      vector[nProteins*nConditions*nSamples] logProteinSampleAbundance;
+      //vector[nProteins*nConditions*nSamples] logProteinSampleAbundance;
+      vector[nProteins*nConditions*nSamples] raw_logProteinSampleAbundance;
       vector<lower=0> [totalNFeatures+nPeptides] raw_ionisationCoeff;
       vector<lower=0>[nProteins*nPopulations] sigma_population;
       real<lower=0> sigma_res;
@@ -300,11 +301,15 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000, numChai
       vector[nProteins*nConditions] logProteinAbundance;
 
       vector[nPeptides*nConditions*nSamples] logPeptideSampleAbundance;
+      vector[nProteins*nConditions*nSamples] logProteinSampleAbundance;
+
       vector[N] logFeatureSampleIntensity;
 
       vector<lower=0> [totalNFeatures+nPeptides] ionisationCoeff;
 
       logProteinAbundance <- referenceAbundanceMatrix*logProteinReferenceAbundance + proteinConditionMatrix*logProteinFoldChange;
+
+      logProteinSampleAbundance <- proteinSampleMatrix*logProteinAbundance + raw_logProteinSampleAbundance;
 
       logPeptideSampleAbundance <- lse(protToPep, logProteinSampleAbundance);
 
@@ -337,7 +342,8 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000, numChai
       sigma_population ~ student_t(3,0,5);
       sigma_res ~ student_t(3,0,5);
 
-      logProteinSampleAbundance ~ normal(proteinSampleMatrix*logProteinAbundance,proteinPopulationMatrix*sigma_population);
+      //logProteinSampleAbundance ~ normal(proteinSampleMatrix*logProteinAbundance,proteinPopulationMatrix*sigma_population);
+      raw_logProteinSampleAbundance ~ normal(0,proteinPopulationMatrix*sigma_population);
       
       res ~ student_t(3,0,sigma_res);
       y ~ poisson(exp(logFeatureSampleIntensity + res));
