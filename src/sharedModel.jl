@@ -286,18 +286,31 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000, numChai
     }
 
     parameters{
-      vector[nProteins] logProteinReferenceAbundance;
-      vector[nProteins*(nConditions-1)] logProteinFoldChange;
+      vector[nProteins] raw_logProteinReferenceAbundance;
+
+      vector[nProteins*(nConditions-1)] raw_logProteinFoldChange;
+
+
       //vector[nProteins*nConditions*nSamples] logProteinSampleAbundance;
+
       vector[nProteins*nConditions*nSamples] raw_logProteinSampleAbundance;
+
       vector<lower=0> [totalNFeatures+nPeptides] raw_ionisationCoeff;
       vector<lower=0>[nProteins*nPopulations] sigma_population;
-      real<lower=0> sigma_res;
-      vector[N] res;
+
+
+      //real<lower=0> sigma_res;
+      //real<lower=0> nu;
+
+      //vector[N] res;
 
     }
 
     transformed parameters{
+
+      vector[nProteins] logProteinReferenceAbundance;
+      vector[nProteins*(nConditions-1)] logProteinFoldChange;
+
       vector[nProteins*nConditions] logProteinAbundance;
 
       vector[nPeptides*nConditions*nSamples] logPeptideSampleAbundance;
@@ -307,9 +320,12 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000, numChai
 
       vector<lower=0> [totalNFeatures+nPeptides] ionisationCoeff;
 
+      logProteinReferenceAbundance <- 10*raw_logProteinReferenceAbundance;
+      logProteinFoldChange <- 10*raw_logProteinFoldChange;
+
       logProteinAbundance <- referenceAbundanceMatrix*logProteinReferenceAbundance + proteinConditionMatrix*logProteinFoldChange;
 
-      logProteinSampleAbundance <- proteinSampleMatrix*logProteinAbundance + raw_logProteinSampleAbundance;
+      logProteinSampleAbundance <- proteinSampleMatrix*logProteinAbundance + proteinPopulationMatrix*sigma_population .* raw_logProteinSampleAbundance;
 
       logPeptideSampleAbundance <- lse(protToPep, logProteinSampleAbundance);
 
@@ -335,18 +351,21 @@ function sharedModel(data,compgraphs,compsummary,iters::Integer = 50000, numChai
     model{
 
 
-      logProteinReferenceAbundance ~ normal(0,10);
-      logProteinFoldChange ~ normal(0,10);
+      raw_logProteinReferenceAbundance ~ normal(0,1);
+      raw_logProteinFoldChange ~ normal(0,1);
+
+
       raw_ionisationCoeff ~ gamma(dirichletPrior,1.0);
 
       sigma_population ~ student_t(3,0,5);
-      sigma_res ~ student_t(3,0,5);
+      //sigma_res ~ student_t(3,0,5);
 
       //logProteinSampleAbundance ~ normal(proteinSampleMatrix*logProteinAbundance,proteinPopulationMatrix*sigma_population);
-      raw_logProteinSampleAbundance ~ normal(0,proteinPopulationMatrix*sigma_population);
-      
-      res ~ student_t(3,0,sigma_res);
-      y ~ poisson(exp(logFeatureSampleIntensity + res));
+      raw_logProteinSampleAbundance ~ normal(0,1);
+
+      //res ~ student_t(3,0,sigma_res);
+      //y ~ poisson(exp(logFeatureSampleIntensity + res));
+      y ~ poisson(exp(logFeatureSampleIntensity));
     }
     generated quantities{
       vector[(nProteins-1)*nConditions] logRelativeProteinAbundance;
