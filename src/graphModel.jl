@@ -141,7 +141,7 @@ function summariseComponents(dat::DataFrame,g,stringToVertexMap,vertexToStringMa
       k+= (sum(differentSets[j,:]) == length(proteins)-1 ? 1 : 0)
     end
 
-    nIdentifiableProteins[compsummary[i,:ID]] = k
+    nIdentifiableProteins[i] = k
   end
 
   compsummary[:identifiable] = nIdentifiableProteins
