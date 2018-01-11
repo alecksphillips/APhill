@@ -55,7 +55,7 @@ function calculateFDR(samples,fc=0.05)
   up = 0
   down = 0
   for i in 1:size(samples)[1]
-      samples[i]<log(1-fc) ? down = down +1 : down = down
+      samples[i]<log(1/(1+fc)) ? down = down +1 : down = down
       samples[i]>log(1+fc) ? up = up + 1 : up = up
   end
 
